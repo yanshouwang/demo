@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -9,14 +9,18 @@ class HomeView extends StatefulWidget {
   _HomeViewState createState() => _HomeViewState();
 }
 
-class _HomeViewState extends State<HomeView>
-    with SingleTickerProviderStateMixin {
-  late AnimationController controller;
+class _HomeViewState extends State<HomeView> with TickerProviderStateMixin {
+  late AnimationController scanController;
+  late AnimationController cardController;
 
   @override
   void initState() {
     super.initState();
-    controller = AnimationController(
+    scanController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    );
+    cardController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
@@ -27,13 +31,8 @@ class _HomeViewState extends State<HomeView>
     return Scaffold(
       body: Stack(
         children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints.expand(),
-            child: Image.asset(
-              'images/flying_colors.jpg',
-              fit: BoxFit.cover,
-            ),
-          ),
+          buildBackground(context),
+          buildScanAnimation(context),
           buildCard(context),
         ],
       ),
@@ -42,15 +41,44 @@ class _HomeViewState extends State<HomeView>
 
   @override
   void dispose() {
-    controller.dispose();
+    cardController.dispose();
+    scanController.dispose();
     super.dispose();
+  }
+
+  Widget buildBackground(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints.expand(),
+      child: Image.asset(
+        'images/flying_colors.jpg',
+        fit: BoxFit.cover,
+      ),
+    );
+  }
+
+  Widget buildScanAnimation(BuildContext context) {
+    final animation = CurvedAnimation(
+      parent: scanController,
+      curve: Curves.linear,
+    );
+    return ConstrainedBox(
+      constraints: const BoxConstraints.expand(),
+      child: AnimatedBuilder(
+        animation: animation,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: ScanAnimationPainter(animation.value),
+          );
+        },
+      ),
+    );
   }
 
   Widget buildCard(BuildContext context) {
     final size = MediaQuery.of(context).size;
     const marginSize = 12.0;
     final animation = CurvedAnimation(
-      parent: controller,
+      parent: cardController,
       curve: Curves.easeOutBack,
     );
     return Container(
@@ -64,30 +92,33 @@ class _HomeViewState extends State<HomeView>
           const beginPaddingSize = 4.0;
           const endPaddingSize = beginPaddingSize * 2.0;
           final paddingSize =
-              lerpDouble(beginPaddingSize, endPaddingSize, value)!;
+              ui.lerpDouble(beginPaddingSize, endPaddingSize, value)!;
           // 计算卡片大小
           final beginCardSize = size.shortestSide / 8.0;
           final endCardWidth = size.width - marginSize * 2;
           final endCardHeight = (size.height - marginSize * 2.0) / 4.0;
-          final cardWidth = lerpDouble(beginCardSize, endCardWidth, value)!;
-          final cardHeight = lerpDouble(beginCardSize, endCardHeight, value)!;
+          final cardWidth = ui.lerpDouble(beginCardSize, endCardWidth, value)!;
+          final cardHeight =
+              ui.lerpDouble(beginCardSize, endCardHeight, value)!;
           // 计算卡片圆角
           final beginCardRadius = beginCardSize / 2.0;
           const endCardRadius = 16.0;
-          final cardRadius = lerpDouble(beginCardRadius, endCardRadius, value)!;
+          final cardRadius =
+              ui.lerpDouble(beginCardRadius, endCardRadius, value)!;
           // 计算按钮大小
           final beginButtonSize = beginCardSize - 2 * beginPaddingSize;
           final endButtonSize = beginButtonSize / 2.0;
-          final buttonSize = lerpDouble(beginButtonSize, endButtonSize, value)!;
+          final buttonSize =
+              ui.lerpDouble(beginButtonSize, endButtonSize, value)!;
           // 计算按钮圆角
           final beginButtonRadius = beginButtonSize / 2.0;
           const endButtonRadius = 12.0;
           final buttonRadius =
-              lerpDouble(beginButtonRadius, endButtonRadius, value)!;
+              ui.lerpDouble(beginButtonRadius, endButtonRadius, value)!;
           return ClipRRect(
             borderRadius: BorderRadius.circular(cardRadius),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
+              filter: ui.ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
               child: Container(
                 color: Theme.of(context).colorScheme.surface.withOpacity(0.5),
                 width: cardWidth,
@@ -105,12 +136,14 @@ class _HomeViewState extends State<HomeView>
                     borderRadius: BorderRadius.circular(buttonRadius),
                     child: InkWell(
                       onTap: () {
-                        switch (controller.status) {
+                        switch (cardController.status) {
                           case AnimationStatus.dismissed:
-                            controller.forward();
+                            cardController.forward();
+                            scanController.repeat();
                             break;
                           case AnimationStatus.completed:
-                            controller.reverse();
+                            cardController.reverse();
+                            scanController.reset();
                             break;
                           default:
                             break;
@@ -125,5 +158,56 @@ class _HomeViewState extends State<HomeView>
         },
       ),
     );
+  }
+}
+
+class ScanAnimationPainter extends CustomPainter {
+  final double progress;
+
+  ScanAnimationPainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final width = size.width;
+    final height = width / 4.0;
+    const step = 12.0;
+    canvas.translate(width / 2.0, -height + (height + size.height) * progress);
+    final path = ui.Path();
+    var dx = 0.0;
+    path.moveTo(dx, 0.0);
+    path.lineTo(dx, height);
+    while (dx <= width / 2.0) {
+      dx += step;
+      path.moveTo(dx, 0.0);
+      path.lineTo(dx, height);
+      path.moveTo(-dx, 0.0);
+      path.lineTo(-dx, height);
+    }
+    var dy = height;
+    while (dy >= 0) {
+      path.moveTo(-width / 2.0, dy);
+      path.lineTo(width / 2.0, dy);
+      dy -= step;
+    }
+    final from = ui.Offset.zero;
+    final to = from.translate(0.0, height);
+    final colors = [Colors.transparent, Colors.white];
+    final paint = Paint()
+      ..shader = ui.Gradient.linear(from, to, colors)
+      ..style = ui.PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawPath(path, paint);
+    // 画底部粗线
+    final p1 = ui.Offset(-width / 2.0, height);
+    final p2 = ui.Offset(width / 2.0, height);
+    paint
+      ..color = Colors.white
+      ..strokeWidth = 2.0;
+    canvas.drawLine(p1, p2, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant ScanAnimationPainter oldDelegate) {
+    return oldDelegate.progress != progress;
   }
 }
